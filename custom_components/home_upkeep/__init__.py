@@ -33,17 +33,24 @@ async def async_setup_entry(
     entry: UpkeepConfigEntry,
 ) -> bool:
     """Set up this integration using UI."""
+    client = UpkeepApiClient(
+        host=entry.data[CONF_HOST],
+        port=int(entry.data[CONF_PORT]),
+        session=async_get_clientsession(hass),
+    )
+
     coordinator = UpkeepCoordinator(
         hass=hass,
         logger=LOGGER,
         name=DOMAIN,
+        client=client,
     )
+
+    # Check we can connect to the WebSocket API
+    await coordinator.async_connect_websocket()
+
     entry.runtime_data = UpkeepData(
-        client=UpkeepApiClient(
-            host=entry.data[CONF_HOST],
-            port=int(entry.data[CONF_PORT]),
-            session=async_get_clientsession(hass),
-        ),
+        client=client,
         integration=async_get_loaded_integration(hass, entry.domain),
         coordinator=coordinator,
     )
@@ -61,6 +68,7 @@ async def async_unload_entry(
     entry: UpkeepConfigEntry,
 ) -> bool:
     """Handle removal of an entry."""
+    await entry.runtime_data.coordinator.async_disconnect_websocket()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 

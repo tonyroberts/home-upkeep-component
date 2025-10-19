@@ -89,15 +89,6 @@ class UpkeepApiClient:
             url=f"http://{self._host}:{self._port}/tasks?list_id={list_id}",
         )
 
-    async def async_set_title(self, value: str) -> Any:
-        """Get data from the API."""
-        return await self._api_wrapper(
-            method="patch",
-            url="https://jsonplaceholder.typicode.com/posts/1",
-            data={"title": value},
-            headers={"Content-type": "application/json; charset=UTF-8"},
-        )
-
     async def async_connect_websocket(self) -> None:
         """Connect to the WebSocket API."""
         if self._websocket is not None:
@@ -136,7 +127,9 @@ class UpkeepApiClient:
         if handler in self._message_handlers:
             self._message_handlers.remove(handler)
 
-    async def async_add_close_handler(self, handler: Callable[[], None]) -> None:
+    async def async_add_close_handler(
+        self, handler: Callable[[], Awaitable[None]] | None = None
+    ) -> None:
         """Add a close handler for WebSocket disconnections."""
         if self._websocket is None:
             await self.async_connect_websocket()
@@ -169,9 +162,9 @@ class UpkeepApiClient:
             _LOGGER.exception("WebSocket listener error")
         finally:
             self._websocket = None
-            self._notify_close_handlers()
+            await self._notify_close_handlers()
 
-    async def _handle_text_message(self, msg) -> None:
+    async def _handle_text_message(self, msg: aiohttp.WSMessage) -> None:
         """Handle incoming text messages."""
         try:
             data = msg.json()
@@ -183,11 +176,11 @@ class UpkeepApiClient:
         except (ValueError, TypeError) as exception:
             _LOGGER.warning("Error parsing WebSocket message: %s", exception)
 
-    def _notify_close_handlers(self) -> None:
+    async def _notify_close_handlers(self) -> None:
         """Notify all close handlers."""
         for handler in self._close_handlers:
             try:
-                handler()
+                await handler()
             except (ValueError, TypeError, RuntimeError) as exception:
                 _LOGGER.warning("Error in close handler: %s", exception)
 

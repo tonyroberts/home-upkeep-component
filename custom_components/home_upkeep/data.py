@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.loader import Integration
 
@@ -23,3 +25,4 @@ class UpkeepData:
     client: UpkeepApiClient
     coordinator: UpkeepCoordinator
     integration: Integration
+    todo_unsub: Callable[[], None] | None = None
