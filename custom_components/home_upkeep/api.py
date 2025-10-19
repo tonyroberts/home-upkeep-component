@@ -28,6 +28,11 @@ class UpkeepApiClientCommunicationError(
 ):
     """Exception to indicate a communication error."""
 
+    def __init__(self, message: str, status: int | None = None) -> None:
+        """Initialize the exception."""
+        super().__init__(message)
+        self.status = status
+
 
 class UpkeepApiClientAuthenticationError(
     UpkeepApiClientError,
@@ -61,6 +66,7 @@ class UpkeepApiClient:
         self._websocket: aiohttp.ClientWebSocketResponse | None = None
         self._websocket_task: asyncio.Task | None = None
         self._message_handlers: list[Callable[[dict], None]] = []
+        self._close_handlers: list[Callable[[], None]] = []
 
     async def async_get_lists(self) -> Any:
         """Get all task lists from the addon."""
@@ -130,35 +136,60 @@ class UpkeepApiClient:
         if handler in self._message_handlers:
             self._message_handlers.remove(handler)
 
+    async def async_add_close_handler(self, handler: Callable[[], None]) -> None:
+        """Add a close handler for WebSocket disconnections."""
+        if self._websocket is None:
+            await self.async_connect_websocket()
+        self._close_handlers.append(handler)
+
+    async def async_remove_close_handler(self, handler: Callable[[], None]) -> None:
+        """Remove a close handler."""
+        if handler in self._close_handlers:
+            self._close_handlers.remove(handler)
+
     async def _websocket_listener(self) -> None:
         """Listen for WebSocket messages and dispatch to handlers."""
         if self._websocket is None:
-            return
+            msg = "WebSocket must be connected before listening for messages"
+            raise RuntimeError(msg)
 
         try:
             async for msg in self._websocket:
                 if msg.type == aiohttp.WSMsgType.TEXT:
-                    try:
-                        data = msg.json()
-                        for handler in self._message_handlers:
-                            try:
-                                await handler(data)
-                            except (ValueError, TypeError, KeyError) as exception:
-                                # Log handler errors but don't stop listening
-                                _LOGGER.warning(
-                                    "Error in WebSocket handler: %s", exception
-                                )
-                    except (ValueError, TypeError) as exception:
-                        _LOGGER.warning(
-                            "Error parsing WebSocket message: %s", exception
-                        )
+                    await self._handle_text_message(msg)
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     _LOGGER.error("WebSocket error: %s", self._websocket.exception())
+                    break
+                elif msg.type == aiohttp.WSMsgType.CLOSE:
+                    _LOGGER.info("WebSocket connection closed")
                     break
         except asyncio.CancelledError:
             pass
         except (aiohttp.ClientError, ConnectionError):
             _LOGGER.exception("WebSocket listener error")
+        finally:
+            self._websocket = None
+            self._notify_close_handlers()
+
+    async def _handle_text_message(self, msg) -> None:
+        """Handle incoming text messages."""
+        try:
+            data = msg.json()
+            for handler in self._message_handlers:
+                try:
+                    await handler(data)
+                except (ValueError, TypeError, KeyError) as exception:
+                    _LOGGER.warning("Error in WebSocket handler: %s", exception)
+        except (ValueError, TypeError) as exception:
+            _LOGGER.warning("Error parsing WebSocket message: %s", exception)
+
+    def _notify_close_handlers(self) -> None:
+        """Notify all close handlers."""
+        for handler in self._close_handlers:
+            try:
+                handler()
+            except (ValueError, TypeError, RuntimeError) as exception:
+                _LOGGER.warning("Error in close handler: %s", exception)
 
     async def _api_wrapper(
         self,
@@ -184,11 +215,14 @@ class UpkeepApiClient:
             raise UpkeepApiClientCommunicationError(
                 msg,
             ) from exception
-        except (aiohttp.ClientError, socket.gaierror) as exception:
+        except aiohttp.ClientResponseError as exception:
             msg = f"Error fetching information - {exception}"
             raise UpkeepApiClientCommunicationError(
-                msg,
+                msg, status=exception.status
             ) from exception
+        except (aiohttp.ClientError, socket.gaierror) as exception:
+            msg = f"Error fetching information - {exception}"
+            raise UpkeepApiClientCommunicationError(msg) from exception
         except Exception as exception:  # pylint: disable=broad-except
             msg = f"Something really wrong happened! - {exception}"
             raise UpkeepApiClientError(

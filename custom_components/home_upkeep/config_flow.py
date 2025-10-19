@@ -14,7 +14,7 @@ from .api import (
     UpkeepApiClientCommunicationError,
     UpkeepApiClientError,
 )
-from .const import DOMAIN, LOGGER
+from .const import DOMAIN, LOGGER, UPKEEP_DEFAULT_HOST, UPKEEP_DEFAULT_PORT
 
 
 class UpkeepFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
@@ -55,7 +55,8 @@ class UpkeepFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required(
                         CONF_HOST,
-                        default=(user_input or {}).get(CONF_HOST, "127.0.0.1"),
+                        default=(user_input or {}).get(CONF_HOST, UPKEEP_DEFAULT_HOST),
+                        description="The IP address or hostname of the Upkeep server",
                     ): selector.TextSelector(
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.TEXT,
@@ -63,7 +64,75 @@ class UpkeepFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                     vol.Required(
                         CONF_PORT,
-                        default=(user_input or {}).get(CONF_PORT, "8125"),
+                        default=(user_input or {}).get(
+                            CONF_PORT, str(UPKEEP_DEFAULT_PORT)
+                        ),
+                        description="The port number of the Upkeep server",
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.NUMBER,
+                        ),
+                    ),
+                },
+            ),
+            errors=_errors,
+        )
+
+    async def async_step_reconfigure(
+        self,
+        user_input: dict | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """Handle a reconfiguration flow initialized by the user."""
+        _errors = {}
+        if user_input is not None:
+            try:
+                await self._test_api_connection(
+                    host=user_input[CONF_HOST],
+                    port=int(user_input[CONF_PORT]),
+                )
+            except UpkeepApiClientAuthenticationError as exception:
+                LOGGER.warning(exception)
+                _errors["base"] = "auth"
+            except UpkeepApiClientCommunicationError as exception:
+                LOGGER.error(exception)
+                _errors["base"] = "connection"
+            except UpkeepApiClientError as exception:
+                LOGGER.exception(exception)
+                _errors["base"] = "unknown"
+            else:
+                return self.async_update_entry(
+                    data=user_input,
+                )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_HOST,
+                        default=(
+                            user_input.get(CONF_HOST)
+                            if user_input
+                            else self.config_entry.data.get(
+                                CONF_HOST, UPKEEP_DEFAULT_HOST
+                            )
+                        ),
+                        description="The IP address or hostname of the Upkeep server",
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                        ),
+                    ),
+                    vol.Required(
+                        CONF_PORT,
+                        default=(
+                            user_input.get(CONF_PORT)
+                            if user_input
+                            else self.config_entry.data.get(
+                                CONF_PORT, str(UPKEEP_DEFAULT_PORT)
+                            )
+                        ),
+                        description="The port number of the Upkeep server",
                     ): selector.TextSelector(
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.NUMBER,
