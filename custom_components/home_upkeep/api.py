@@ -94,6 +94,7 @@ class UpkeepApiClient:
         if self._websocket is not None:
             return
 
+        _LOGGER.debug("Connecting to WebSocket API")
         try:
             ws_url = f"ws://{self._host}:{self._port}/ws"
             self._websocket = await self._session.ws_connect(ws_url)
@@ -101,9 +102,11 @@ class UpkeepApiClient:
         except Exception as exception:
             msg = f"Error connecting to WebSocket - {exception}"
             raise UpkeepApiClientCommunicationError(msg) from exception
+        _LOGGER.debug("WebSocket API connected")
 
     async def async_disconnect_websocket(self) -> None:
         """Disconnect from the WebSocket API."""
+        _LOGGER.debug("Disconnecting from WebSocket API")
         if self._websocket_task is not None:
             self._websocket_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -113,6 +116,7 @@ class UpkeepApiClient:
         if self._websocket is not None:
             await self._websocket.close()
             self._websocket = None
+        _LOGGER.debug("WebSocket API disconnected")
 
     async def async_add_message_handler(self, handler: UpkeepApiClientCallback) -> None:
         """Add a message handler for WebSocket updates."""

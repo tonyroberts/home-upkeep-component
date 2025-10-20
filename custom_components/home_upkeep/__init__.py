@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from homeassistant.const import CONF_HOST, CONF_PORT, Platform
+from homeassistant.const import CONF_HOST, CONF_PORT, EVENT_HOMEASSISTANT_STOP, Platform
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_loaded_integration
 
@@ -19,7 +20,7 @@ from .coordinator import UpkeepCoordinator
 from .data import UpkeepData
 
 if TYPE_CHECKING:
-    from homeassistant.core import HomeAssistant
+    from homeassistant.core import Event, HomeAssistant
 
     from .data import UpkeepConfigEntry
 
@@ -49,10 +50,18 @@ async def async_setup_entry(
     # Check we can connect to the WebSocket API
     await coordinator.async_connect_websocket()
 
+    # And disconnect when shutting down
+    @callback
+    async def handle_stop(_ev: Event) -> None:
+        await coordinator.async_disconnect_websocket()
+
+    stop_unsub = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, handle_stop)
+
     entry.runtime_data = UpkeepData(
         client=client,
         integration=async_get_loaded_integration(hass, entry.domain),
         coordinator=coordinator,
+        stop_unsub=stop_unsub,
     )
 
     await coordinator.async_config_entry_first_refresh()
@@ -68,6 +77,7 @@ async def async_unload_entry(
     entry: UpkeepConfigEntry,
 ) -> bool:
     """Handle removal of an entry."""
+    entry.runtime_data.stop_unsub()
     await entry.runtime_data.coordinator.async_disconnect_websocket()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 

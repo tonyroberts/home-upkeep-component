@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -36,6 +37,8 @@ class UpkeepCoordinator(DataUpdateCoordinator):
         self.__websocket_connected = False
         self.__reconnection_task: asyncio.Task | None = None
         self.__reconnection_delay = 5.0  # seconds
+        self.__reconnect_condition = asyncio.Condition()
+        self.__should_reconnect = True
         self.__lists = {}
         self.__tasks = {}
 
@@ -43,23 +46,25 @@ class UpkeepCoordinator(DataUpdateCoordinator):
         """Connect to the WebSocket API."""
         if self.__websocket_connected:
             return
+        self.__should_reconnect = True
         await self.__client.async_connect_websocket()
         self.__websocket_connected = True
         await self.__client.async_add_close_handler(self.__handle_websocket_close)
         await self.__client.async_add_message_handler(
             self.__async_handle_websocket_message
         )
-        _LOGGER.debug("WebSocket connected successfully")
 
     async def async_disconnect_websocket(self) -> None:
         """Disconnect from the WebSocket API."""
+        async with self.__reconnect_condition:
+            self.__should_reconnect = False
+            self.__reconnect_condition.notify_all()
         if self.__reconnection_task is not None:
             self.__reconnection_task.cancel()
             self.__reconnection_task = None
         if self.__websocket_connected:
             await self.__client.async_disconnect_websocket()
             self.__websocket_connected = False
-            _LOGGER.debug("WebSocket disconnected successfully")
 
     @property
     def client(self) -> UpkeepApiClient:
@@ -101,7 +106,7 @@ class UpkeepCoordinator(DataUpdateCoordinator):
         self.__lists = {}
         self.__tasks = {}
         self.async_update_listeners()
-        if not self.__reconnection_task:
+        if not self.__reconnection_task and self.__should_reconnect:
             self.__reconnection_task = self.hass.async_create_task(
                 self.__reconnect_websocket()
             )
@@ -111,14 +116,17 @@ class UpkeepCoordinator(DataUpdateCoordinator):
         delay = self.__reconnection_delay
         while True:
             try:
-                await asyncio.sleep(delay)
+                async with self.__reconnect_condition:
+                    if not self.__should_reconnect:
+                        break
+                    with contextlib.suppress(TimeoutError):
+                        await asyncio.wait_for(
+                            self.__reconnect_condition.wait(), timeout=delay
+                        )
+                    if not self.__should_reconnect:
+                        break
                 _LOGGER.debug("Attempting to reconnect WebSocket")
-                await self.__client.async_add_close_handler(
-                    self.__handle_websocket_close
-                )
-                await self.__client.async_add_message_handler(
-                    self.__async_handle_websocket_message
-                )
+                await self.async_connect_websocket()
                 _LOGGER.debug("WebSocket reconnected successfully")
                 break
             except (

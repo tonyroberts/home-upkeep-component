@@ -26,3 +26,4 @@ class UpkeepData:
     coordinator: UpkeepCoordinator
     integration: Integration
     todo_unsub: Callable[[], None] | None = None
+    stop_unsub: Callable[[], None] | None = None
