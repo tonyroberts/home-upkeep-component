@@ -90,6 +90,24 @@ class UpkeepApiClient:
             url=f"http://{self._host}:{self._port}/tasks?list_id={list_id}",
         )
 
+    async def async_create_task(
+        self, list_id: int, title: str, due_date: datetime.date | None = None
+    ) -> None:
+        """Create a task in the addon."""
+        if isinstance(due_date, datetime.date):
+            due_date = due_date.date()
+
+        return await self._api_wrapper(
+            method="post",
+            url=f"http://{self._host}:{self._port}/tasks",
+            data={
+                "list_id": list_id,
+                "title": title,
+                "due_date": due_date.isoformat() if due_date else None,
+            },
+            headers={"Content-Type": "application/json"},
+        )
+
     async def async_update_task(
         self,
         task_id: str,

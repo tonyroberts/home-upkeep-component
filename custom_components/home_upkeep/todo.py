@@ -81,8 +81,8 @@ class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
     """UpkeepTodoEntity class."""
 
     _attr_supported_features: ClassVar[int] = (
-        # TodoListEntityFeature.CREATE_TODO_ITEM
-        TodoListEntityFeature.DELETE_TODO_ITEM
+        TodoListEntityFeature.CREATE_TODO_ITEM
+        | TodoListEntityFeature.DELETE_TODO_ITEM
         | TodoListEntityFeature.UPDATE_TODO_ITEM
         | TodoListEntityFeature.SET_DUE_DATE_ON_ITEM
         | TodoListEntityFeature.SET_DUE_DATETIME_ON_ITEM
@@ -146,10 +146,18 @@ class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
                     summary=task["title"],
                     uid=str(task["id"]),
                     status=status,
-                    due=due_date if due_date else None,
+                    due=due_date,
                 )
             )
         return items
+
+    async def async_create_todo_item(self, item: TodoItem) -> None:
+        """Add an item to the To-do list."""
+        await self.__client.async_create_task(
+            list_id=self.__id,
+            title=item.summary,
+            due_date=item.due,
+        )
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
         """Update an item in the To-do list."""
@@ -157,7 +165,7 @@ class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
             task_id=int(item.uid),
             title=item.summary,
             completed=item.status == TodoItemStatus.COMPLETED,
-            due_date=item.due if item.due else None,
+            due_date=item.due,
         )
 
     async def async_delete_todo_items(self, uids: list[str]) -> None:
