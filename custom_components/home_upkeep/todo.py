@@ -7,7 +7,12 @@ import datetime
 import logging
 from typing import TYPE_CHECKING
 
-from homeassistant.components.todo import TodoItem, TodoItemStatus, TodoListEntity
+from homeassistant.components.todo import (
+    TodoItem,
+    TodoItemStatus,
+    TodoListEntity,
+    TodoListEntityFeature,
+)
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import DOMAIN
@@ -16,6 +21,8 @@ from .entity import UpkeepEntity
 _LOGGER = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from typing import ClassVar
+
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -73,6 +80,14 @@ async def async_unload_entry(
 class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
     """UpkeepTodoEntity class."""
 
+    _attr_supported_features: ClassVar[int] = (
+        # TodoListEntityFeature.CREATE_TODO_ITEM
+        TodoListEntityFeature.DELETE_TODO_ITEM
+        | TodoListEntityFeature.UPDATE_TODO_ITEM
+        | TodoListEntityFeature.SET_DUE_DATE_ON_ITEM
+        | TodoListEntityFeature.SET_DUE_DATETIME_ON_ITEM
+    )
+
     def __init__(self, coordinator: UpkeepCoordinator, list_id: int) -> None:
         """Initialize the todo entity class."""
         super().__init__(coordinator)
@@ -129,9 +144,23 @@ class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
             items.append(
                 TodoItem(
                     summary=task["title"],
-                    uid=task["id"],
+                    uid=str(task["id"]),
                     status=status,
-                    due=due_date,
+                    due=due_date if due_date else None,
                 )
             )
         return items
+
+    async def async_update_todo_item(self, item: TodoItem) -> None:
+        """Update an item in the To-do list."""
+        await self.__client.async_update_task(
+            task_id=int(item.uid),
+            title=item.summary,
+            completed=item.status == TodoItemStatus.COMPLETED,
+            due_date=item.due if item.due else None,
+        )
+
+    async def async_delete_todo_items(self, uids: list[str]) -> None:
+        """Delete an item in the To-do list."""
+        for uid in uids:
+            await self.__client.async_delete_task(task_id=int(uid))

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import datetime
 import logging
 import socket
 from typing import TYPE_CHECKING, Any
@@ -87,6 +88,39 @@ class UpkeepApiClient:
         return await self._api_wrapper(
             method="get",
             url=f"http://{self._host}:{self._port}/tasks?list_id={list_id}",
+        )
+
+    async def async_update_task(
+        self,
+        task_id: str,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        completed: bool | None = None,
+        due_date: datetime.date | None = None,
+    ) -> None:
+        """Update a task in the addon."""
+        if isinstance(due_date, datetime.date):
+            due_date = due_date.date()
+
+        return await self._api_wrapper(
+            method="patch",
+            url=f"http://{self._host}:{self._port}/tasks/{task_id}",
+            data={
+                "task_id": task_id,
+                "title": title,
+                "description": description,
+                "completed": completed,
+                "due_date": due_date.isoformat() if due_date else None,
+            },
+            headers={"Content-Type": "application/json"},
+        )
+
+    async def async_delete_task(self, task_id: int) -> None:
+        """Delete a task in the addon."""
+        return await self._api_wrapper(
+            method="delete",
+            url=f"http://{self._host}:{self._port}/tasks/{task_id}",
         )
 
     async def async_connect_websocket(self) -> None:
