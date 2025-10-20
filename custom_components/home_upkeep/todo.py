@@ -76,7 +76,7 @@ class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
     def __init__(self, coordinator: UpkeepCoordinator, list_id: int) -> None:
         """Initialize the todo entity class."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"upkeep_list_{list_id}"
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}-{list_id}"
         self.__client = coordinator.client
         self.__id = list_id
 

@@ -8,7 +8,7 @@ DOMAIN = "home-upkeep"
 ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
 
 # Default host for Upkeep API
-UPKEEP_DEFAULT_HOST = "127.0.0.1"
+UPKEEP_DEFAULT_HOST = "local-home-upkeep"
 
 # Default port for Upkeep API
 UPKEEP_DEFAULT_PORT = 8125
