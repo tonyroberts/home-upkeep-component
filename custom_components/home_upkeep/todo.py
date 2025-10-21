@@ -183,7 +183,7 @@ class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
 
             if is_completed:
                 completed_tasks.append(task_data)
-            elif due_date and due_date <= today.date():
+            elif due_date is None or due_date <= today.date():
                 due_tasks.append(task_data)
             else:
                 upcoming_tasks.append(task_data)
@@ -200,7 +200,7 @@ class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
             ],
         ) -> tuple[datetime.datetime, datetime.datetime, datetime.datetime]:
             (_task, due_date, _completed_at, created_at) = x
-            return (due_date or min_dt.date(), created_at or min_dt)
+            return (due_date or today.date(), created_at or min_dt)
 
         def _completed_sort_key(
             x: tuple[
@@ -216,8 +216,8 @@ class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
                 created_at or min_dt,
             )
 
-        due_tasks.sort(key=_pending_sort_key, reverse=True)
-        upcoming_tasks.sort(key=_pending_sort_key, reverse=True)
+        due_tasks.sort(key=_pending_sort_key, reverse=False)
+        upcoming_tasks.sort(key=_pending_sort_key, reverse=False)
         completed_tasks.sort(key=_completed_sort_key, reverse=True)
 
         # Concatenate the three groups in order: due, upcoming, completed
