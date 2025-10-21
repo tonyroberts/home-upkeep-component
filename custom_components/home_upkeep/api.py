@@ -94,7 +94,7 @@ class UpkeepApiClient:
         self, list_id: int, title: str, due_date: datetime.date | None = None
     ) -> None:
         """Create a task in the addon."""
-        if isinstance(due_date, datetime.date):
+        if isinstance(due_date, datetime.datetime):
             due_date = due_date.date()
 
         return await self._api_wrapper(
@@ -118,7 +118,7 @@ class UpkeepApiClient:
         due_date: datetime.date | None = None,
     ) -> None:
         """Update a task in the addon."""
-        if isinstance(due_date, datetime.date):
+        if isinstance(due_date, datetime.datetime):
             due_date = due_date.date()
 
         return await self._api_wrapper(

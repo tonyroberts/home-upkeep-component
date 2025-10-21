@@ -77,6 +77,26 @@ async def async_unload_entry(
         entry.runtime_data.todo_unsub = None
 
 
+def _parse_utc_datetime(dt_str: str) -> datetime:
+    """
+    Parse a date/time string known to be in UTC into a timezone-aware datetime.
+
+    Supports ISO 8601 formats with or without timezone info, including 'Z' suffix.
+    """
+    # Replace 'Z' (ISO 8601 UTC) with '+00:00' so fromisoformat can handle it
+    if dt_str.endswith("Z"):
+        dt_str = dt_str[:-1] + "+00:00"
+
+    dt = datetime.datetime.fromisoformat(dt_str)
+
+    # If it's naive (no timezone info), assume UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.UTC)
+
+    # Normalize to UTC (handles offsets like +01:00 properly)
+    return dt.astimezone(datetime.UTC)
+
+
 class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
     """UpkeepTodoEntity class."""
 
@@ -86,6 +106,7 @@ class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
         | TodoListEntityFeature.UPDATE_TODO_ITEM
         | TodoListEntityFeature.SET_DUE_DATE_ON_ITEM
         | TodoListEntityFeature.SET_DUE_DATETIME_ON_ITEM
+        | TodoListEntityFeature.SET_DESCRIPTION_ON_ITEM
     )
 
     def __init__(self, coordinator: UpkeepCoordinator, list_id: int) -> None:
@@ -128,22 +149,93 @@ class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
         """Return list of todo items."""
         items = []
         tasks = self.coordinator.tasks.get(self.__id, {})
+
+        # Parse tasks and group them
+        due_tasks = []
+        upcoming_tasks = []
+        completed_tasks = []
+
+        today = (
+            datetime.datetime.now(tz=datetime.UTC)
+            .astimezone()
+            .replace(hour=0, minute=0, second=0, microsecond=0)
+        )
+
         for task in tasks.values():
+            # Parse datetime strings
+            due_date = None
+            completed_at = None
+            created_at = None
+
+            if due_date_str := task.get("due_date"):
+                with contextlib.suppress(ValueError, TypeError):
+                    due_date = datetime.date.fromisoformat(due_date_str)
+
+            if completed_at_str := task.get("completed_at"):
+                with contextlib.suppress(ValueError, TypeError):
+                    completed_at = _parse_utc_datetime(completed_at_str).astimezone()
+
+            if created_at_str := task.get("created_at"):
+                with contextlib.suppress(ValueError, TypeError):
+                    created_at = _parse_utc_datetime(created_at_str).astimezone()
+
+            task_data = (task, due_date, completed_at, created_at)
+            is_completed = task.get("completed", False)
+
+            if is_completed:
+                completed_tasks.append(task_data)
+            elif due_date and due_date <= today.date():
+                due_tasks.append(task_data)
+            else:
+                upcoming_tasks.append(task_data)
+
+        # Sort each group by due_date, completed_at, created_at (descending order)
+        min_dt = datetime.datetime.min.replace(tzinfo=today.tzinfo)
+
+        def _pending_sort_key(
+            x: tuple[
+                dict,
+                datetime.datetime | None,
+                datetime.datetime | None,
+                datetime.datetime | None,
+            ],
+        ) -> tuple[datetime.datetime, datetime.datetime, datetime.datetime]:
+            (_task, due_date, _completed_at, created_at) = x
+            return (due_date or min_dt.date(), created_at or min_dt)
+
+        def _completed_sort_key(
+            x: tuple[
+                dict,
+                datetime.datetime | None,
+                datetime.datetime | None,
+                datetime.datetime | None,
+            ],
+        ) -> tuple[datetime.datetime, datetime.datetime, datetime.datetime]:
+            (_task, _due_date, completed_at, created_at) = x
+            return (
+                completed_at or min_dt,
+                created_at or min_dt,
+            )
+
+        due_tasks.sort(key=_pending_sort_key, reverse=True)
+        upcoming_tasks.sort(key=_pending_sort_key, reverse=True)
+        completed_tasks.sort(key=_completed_sort_key, reverse=True)
+
+        # Concatenate the three groups in order: due, upcoming, completed
+        all_tasks = due_tasks + upcoming_tasks + completed_tasks
+
+        # Create TodoItem objects from sorted tasks
+        for task, due_date, _, _ in all_tasks:
             status = (
                 TodoItemStatus.COMPLETED
                 if task.get("completed")
                 else TodoItemStatus.NEEDS_ACTION
             )
 
-            # Parse optional due date
-            due_date = None
-            if due_date_str := task.get("due_date"):
-                with contextlib.suppress(ValueError, TypeError):
-                    due_date = datetime.datetime.fromisoformat(due_date_str)
-
             items.append(
                 TodoItem(
                     summary=task["title"],
+                    description=task.get("description", None),
                     uid=str(task["id"]),
                     status=status,
                     due=due_date,
@@ -166,6 +258,7 @@ class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
             title=item.summary,
             completed=item.status == TodoItemStatus.COMPLETED,
             due_date=item.due,
+            description=item.description,
         )
 
     async def async_delete_todo_items(self, uids: list[str]) -> None:

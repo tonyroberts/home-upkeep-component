@@ -103,6 +103,7 @@ class UpkeepCoordinator(DataUpdateCoordinator):
     async def __handle_websocket_close(self) -> None:
         """Handle WebSocket close event."""
         _LOGGER.debug("WebSocket closed")
+        self.__websocket_connected = False
         self.__lists = {}
         self.__tasks = {}
         self.async_update_listeners()
