@@ -105,7 +105,6 @@ class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
         | TodoListEntityFeature.DELETE_TODO_ITEM
         | TodoListEntityFeature.UPDATE_TODO_ITEM
         | TodoListEntityFeature.SET_DUE_DATE_ON_ITEM
-        | TodoListEntityFeature.SET_DUE_DATETIME_ON_ITEM
         | TodoListEntityFeature.SET_DESCRIPTION_ON_ITEM
     )
 
