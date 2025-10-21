@@ -130,6 +130,9 @@ class UpkeepApiClient:
                 "description": description,
                 "completed": completed,
                 "due_date": due_date.isoformat() if due_date else None,
+                "updated_at": datetime.datetime.now(tz=datetime.UTC)
+                .astimezone()
+                .isoformat(),
             },
             headers={"Content-Type": "application/json"},
         )

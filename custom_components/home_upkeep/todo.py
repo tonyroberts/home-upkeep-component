@@ -77,7 +77,7 @@ async def async_unload_entry(
         entry.runtime_data.todo_unsub = None
 
 
-def _parse_utc_datetime(dt_str: str) -> datetime:
+def _parse_datetime(dt_str: str) -> datetime:
     """
     Parse a date/time string known to be in UTC into a timezone-aware datetime.
 
@@ -93,8 +93,8 @@ def _parse_utc_datetime(dt_str: str) -> datetime:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=datetime.UTC)
 
-    # Normalize to UTC (handles offsets like +01:00 properly)
-    return dt.astimezone(datetime.UTC)
+    # Normalize to local timezone
+    return dt.astimezone()
 
 
 class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
@@ -173,11 +173,11 @@ class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
 
             if completed_at_str := task.get("completed_at"):
                 with contextlib.suppress(ValueError, TypeError):
-                    completed_at = _parse_utc_datetime(completed_at_str).astimezone()
+                    completed_at = _parse_datetime(completed_at_str).astimezone()
 
             if created_at_str := task.get("created_at"):
                 with contextlib.suppress(ValueError, TypeError):
-                    created_at = _parse_utc_datetime(created_at_str).astimezone()
+                    created_at = _parse_datetime(created_at_str).astimezone()
 
             task_data = (task, due_date, completed_at, created_at)
             is_completed = task.get("completed", False)
