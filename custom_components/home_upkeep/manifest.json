@@ -1,0 +1,12 @@
+{
+  "domain": "home-upkeep",
+  "name": "Home Upkeep",
+  "codeowners": [
+    "@tonyroberts"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/tonyroberts/home-upkeep-component",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/tonyroberts/home-upkeep-component/issues",
+  "version": "0.1.0"
+}
