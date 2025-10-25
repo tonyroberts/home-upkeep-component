@@ -1,10 +1,13 @@
 {
-  "domain": "home-upkeep",
+  "domain": "home_upkeep",
   "name": "Home Upkeep",
   "codeowners": [
     "@tonyroberts"
   ],
   "config_flow": true,
+  "dependencies": [
+    "hassio"
+  ],
   "documentation": "https://github.com/tonyroberts/home-upkeep-component",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/tonyroberts/home-upkeep-component/issues",

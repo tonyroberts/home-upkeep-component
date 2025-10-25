@@ -4,7 +4,7 @@ from logging import Logger, getLogger
 
 LOGGER: Logger = getLogger(__package__)
 
-DOMAIN = "home-upkeep"
+DOMAIN = "home_upkeep"
 ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
 
 # Default host for Upkeep API
