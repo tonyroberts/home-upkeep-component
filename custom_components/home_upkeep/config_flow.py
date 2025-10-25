@@ -6,6 +6,7 @@ import logging
 
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.components.hassio.handler import get_supervisor_client
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -34,8 +35,14 @@ class UpkeepFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         user_input = user_input or {}
-        user_input.setdefault(CONF_HOST, UPKEEP_DEFAULT_HOST)
-        user_input.setdefault(CONF_PORT, UPKEEP_DEFAULT_PORT)
+
+        # Try to get addon hostname from supervisor, fallback to defaults
+        addon_host, addon_port = (await self._discover_addon()) or (
+            UPKEEP_DEFAULT_HOST,
+            UPKEEP_DEFAULT_PORT,
+        )
+        user_input.setdefault(CONF_HOST, addon_host)
+        user_input.setdefault(CONF_PORT, addon_port)
 
         try:
             await self._test_api_connection(
@@ -72,7 +79,7 @@ class UpkeepFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                     vol.Required(
                         CONF_PORT,
-                        default=user_input[CONF_PORT],
+                        default=str(user_input[CONF_PORT]),
                         description="The port number of the Upkeep server",
                     ): selector.TextSelector(
                         selector.TextSelectorConfig(
@@ -153,6 +160,17 @@ class UpkeepFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
         )
+
+    async def _discover_addon(self) -> tuple[str, int] | None:
+        """Get the hostname and port of the home-upkeep addon from supervisor."""
+        supervisor = get_supervisor_client(self.hass)
+        for addon in await supervisor.addons.list():
+            if addon.slug == f"{addon.repository}_home-upkeep":
+                addon_info = await supervisor.addons.addon_info(addon.slug)
+                hostname = addon_info.hostname
+                port = int(addon_info.options.get("port", UPKEEP_DEFAULT_PORT))
+                return hostname, port
+        return None
 
     async def _test_api_connection(self, host: str, port: int) -> None:
         """Validate credentials."""
