@@ -1,182 +1,27 @@
-"""Adds config flow for Blueprint."""
+"""Config flow for the Home Upkeep integration."""
 
 from __future__ import annotations
 
-import logging
+from typing import Any
 
-import voluptuous as vol
-from homeassistant import config_entries
-from homeassistant.components.hassio.handler import get_supervisor_client
-from homeassistant.const import CONF_HOST, CONF_PORT
-from homeassistant.helpers import selector
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 
-from .api import (
-    UpkeepApiClient,
-    UpkeepApiClientAuthenticationError,
-    UpkeepApiClientCommunicationError,
-    UpkeepApiClientError,
-)
-from .const import DOMAIN, LOGGER, UPKEEP_DEFAULT_HOST, UPKEEP_DEFAULT_PORT
-
-_LOGGER = logging.getLogger(__name__)
+from .const import DOMAIN
 
 
-class UpkeepFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
-    """Config flow for Upkeep."""
+class HomeUpkeepConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for Home Upkeep."""
 
     VERSION = 1
 
     async def async_step_user(
-        self,
-        user_input: dict | None = None,
-    ) -> config_entries.ConfigFlowResult:
-        """Handle a flow initialized by the user."""
-        errors = {}
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the initial (and only) step: single-instance setup."""
+        if self._async_current_entries():
+            return self.async_abort(reason="single_instance_allowed")
 
-        user_input = user_input or {}
-
-        # Try to get addon hostname from supervisor, fallback to defaults
-        addon_host, addon_port = (await self._discover_addon()) or (
-            UPKEEP_DEFAULT_HOST,
-            UPKEEP_DEFAULT_PORT,
-        )
-        user_input.setdefault(CONF_HOST, addon_host)
-        user_input.setdefault(CONF_PORT, addon_port)
-
-        try:
-            await self._test_api_connection(
-                host=user_input[CONF_HOST],
-                port=int(user_input[CONF_PORT]),
-            )
-        except UpkeepApiClientAuthenticationError as exception:
-            LOGGER.warning(exception)
-            errors["base"] = "auth"
-        except UpkeepApiClientCommunicationError as exception:
-            LOGGER.error(exception)
-            errors["base"] = "connection"
-        except UpkeepApiClientError as exception:
-            LOGGER.exception(exception)
-            errors["base"] = "unknown"
-        else:
-            return self.async_create_entry(
-                title="Home Upkeep",
-                data=user_input,
-            )
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_HOST,
-                        default=user_input[CONF_HOST],
-                        description="The IP address or hostname of the Upkeep server",
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                        ),
-                    ),
-                    vol.Required(
-                        CONF_PORT,
-                        default=str(user_input[CONF_PORT]),
-                        description="The port number of the Upkeep server",
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.NUMBER,
-                        ),
-                    ),
-                },
-            ),
-            errors=errors,
-        )
-
-    async def async_step_reconfigure(
-        self,
-        user_input: dict | None = None,
-    ) -> config_entries.ConfigFlowResult:
-        """Handle a reconfiguration flow initialized by the user."""
-        reconfigure_entry = self._get_reconfigure_entry()
-
-        errors = {}
         if user_input is not None:
-            try:
-                await self._test_api_connection(
-                    host=user_input[CONF_HOST],
-                    port=int(user_input[CONF_PORT]),
-                )
-            except UpkeepApiClientAuthenticationError as exception:
-                LOGGER.warning(exception)
-                errors["base"] = "auth"
-            except UpkeepApiClientCommunicationError as exception:
-                LOGGER.error(exception)
-                errors["base"] = "connection"
-            except UpkeepApiClientError as exception:
-                LOGGER.exception(exception)
-                errors["base"] = "unknown"
-            else:
-                return self.async_update_reload_and_abort(
-                    reconfigure_entry,
-                    data=user_input,
-                )
+            return self.async_create_entry(title="Home Upkeep", data={})
 
-        return self.async_show_form(
-            step_id="reconfigure",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_HOST,
-                        default=(
-                            (user_input or {}).get(
-                                CONF_HOST,
-                                reconfigure_entry.data.get(
-                                    CONF_HOST, UPKEEP_DEFAULT_HOST
-                                ),
-                            )
-                        ),
-                        description="The IP address or hostname of the Upkeep server",
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                        ),
-                    ),
-                    vol.Required(
-                        CONF_PORT,
-                        default=(
-                            (user_input or {}).get(
-                                CONF_PORT,
-                                reconfigure_entry.data.get(
-                                    CONF_PORT, UPKEEP_DEFAULT_PORT
-                                ),
-                            )
-                        ),
-                        description="The port number of the Upkeep server",
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.NUMBER,
-                        ),
-                    ),
-                },
-            ),
-            errors=errors,
-        )
-
-    async def _discover_addon(self) -> tuple[str, int] | None:
-        """Get the hostname and port of the home-upkeep addon from supervisor."""
-        supervisor = get_supervisor_client(self.hass)
-        for addon in await supervisor.addons.list():
-            if addon.slug == f"{addon.repository}_home-upkeep":
-                addon_info = await supervisor.addons.addon_info(addon.slug)
-                hostname = addon_info.hostname
-                port = int(addon_info.options.get("port", UPKEEP_DEFAULT_PORT))
-                return hostname, port
-        return None
-
-    async def _test_api_connection(self, host: str, port: int) -> None:
-        """Validate credentials."""
-        client = UpkeepApiClient(
-            host=host,
-            port=port,
-            session=async_create_clientsession(self.hass),
-        )
-        await client.async_get_lists()
+        return self.async_show_form(step_id="user")

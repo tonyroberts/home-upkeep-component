@@ -1,11 +1,16 @@
-"""Todo integration for Home Upkeep."""
+"""
+`todo` entities for the Home Upkeep integration.
+
+One `TodoListEntity` per list, mapping task <-> `TodoItem` (summary=title,
+status from `completed`, due=`due_date`, description, completed=
+`completed_at`). This absorbs the separate `home-upkeep-component` repo's
+role. The mapping is intentionally lossy: reschedule/seasonal/constraints
+richness lives in the panel, not here.
+"""
 
 from __future__ import annotations
 
-import contextlib
-import datetime
-import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.todo import (
     TodoItem,
@@ -13,254 +18,178 @@ from homeassistant.components.todo import (
     TodoListEntity,
     TodoListEntityFeature,
 )
+from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import DOMAIN
-from .entity import UpkeepEntity
+from .const import SIGNAL_UPKEEP_CHANGED
+from .store import async_get_store
 
-_LOGGER = logging.getLogger(__name__)
-
+# ruff (TC002) wants type-only imports under TYPE_CHECKING to avoid an
+# unnecessary runtime import, since `from __future__ import annotations`
+# means annotations are never evaluated at runtime anyway.
 if TYPE_CHECKING:
-    from typing import ClassVar
-
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-    from .coordinator import UpkeepCoordinator
-    from .data import UpkeepConfigEntry
+    from . import HomeUpkeepConfigEntry
+    from .models import StoredTask
+    from .store import HomeUpkeepStore
+
+_SUPPORTED_FEATURES = (
+    TodoListEntityFeature.CREATE_TODO_ITEM
+    | TodoListEntityFeature.UPDATE_TODO_ITEM
+    | TodoListEntityFeature.DELETE_TODO_ITEM
+    | TodoListEntityFeature.SET_DUE_DATE_ON_ITEM
+    | TodoListEntityFeature.SET_DESCRIPTION_ON_ITEM
+)
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: UpkeepConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up the todo platform."""
-    coordinator: UpkeepCoordinator = entry.runtime_data.coordinator
-    existing_lists = set()
-
-    async def _handle_list_added(list_id: int) -> None:
-        if list_id not in existing_lists:
-            existing_lists.add(list_id)
-            async_add_entities([UpkeepTodoEntity(coordinator, list_id)])
-
-    async def _load_initial_entities() -> None:
-        list_entities = []
-        for list_id in coordinator.lists:
-            if list_id not in existing_lists:
-                list_entities.append(UpkeepTodoEntity(coordinator, list_id))
-                existing_lists.add(list_id)
-        async_add_entities(list_entities)
-
-    entry.runtime_data.todo_unsub = async_dispatcher_connect(
-        hass,
-        f"{DOMAIN}_list_created",
-        _handle_list_added,
+def _task_to_todo_item(task: StoredTask) -> TodoItem:
+    """Convert a StoredTask into a TodoItem (lossy: see module docstring)."""
+    return TodoItem(
+        uid=str(task.id),
+        summary=task.title,
+        status=TodoItemStatus.COMPLETED
+        if task.completed
+        else TodoItemStatus.NEEDS_ACTION,
+        due=task.due_date,
+        description=task.description,
+        completed=task.completed_at,
     )
 
-    entry.runtime_data.todo_unsub = async_dispatcher_connect(
-        hass,
-        f"{DOMAIN}_reloaded",
-        _load_initial_entities,
-    )
 
-    await _load_initial_entities()
+class HomeUpkeepTodoListEntity(TodoListEntity):
+    """A Home Upkeep list, exposed as a `todo` entity."""
 
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_supported_features = _SUPPORTED_FEATURES
 
-async def async_unload_entry(
-    _hass: HomeAssistant,
-    entry: UpkeepConfigEntry,
-) -> bool:
-    """Handle removal of an entry."""
-    if entry.runtime_data.todo_unsub is not None:
-        entry.runtime_data.todo_unsub()
-        entry.runtime_data.todo_unsub = None
+    def __init__(self, store: HomeUpkeepStore, list_id: int, name: str) -> None:
+        """Initialize the entity for the given list."""
+        self._store = store
+        self._list_id = list_id
+        self._attr_unique_id = f"home_upkeep_list_{list_id}"
+        self._attr_name = name
+        self._refresh_items()
 
-
-def _parse_datetime(dt_str: str) -> datetime:
-    """
-    Parse a date/time string known to be in UTC into a timezone-aware datetime.
-
-    Supports ISO 8601 formats with or without timezone info, including 'Z' suffix.
-    """
-    # Replace 'Z' (ISO 8601 UTC) with '+00:00' so fromisoformat can handle it
-    if dt_str.endswith("Z"):
-        dt_str = dt_str[:-1] + "+00:00"
-
-    dt = datetime.datetime.fromisoformat(dt_str)
-
-    # If it's naive (no timezone info), assume UTC
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=datetime.UTC)
-
-    # Normalize to local timezone
-    return dt.astimezone()
-
-
-class UpkeepTodoEntity(UpkeepEntity, TodoListEntity):
-    """UpkeepTodoEntity class."""
-
-    _attr_supported_features: ClassVar[int] = (
-        TodoListEntityFeature.CREATE_TODO_ITEM
-        | TodoListEntityFeature.DELETE_TODO_ITEM
-        | TodoListEntityFeature.UPDATE_TODO_ITEM
-        | TodoListEntityFeature.SET_DUE_DATE_ON_ITEM
-        | TodoListEntityFeature.SET_DESCRIPTION_ON_ITEM
-    )
-
-    def __init__(self, coordinator: UpkeepCoordinator, list_id: int) -> None:
-        """Initialize the todo entity class."""
-        super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.config_entry.entry_id}-{list_id}"
-        self.__client = coordinator.client
-        self.__id = list_id
+    @property
+    def list_id(self) -> int:
+        """The Home Upkeep list ID this entity mirrors."""
+        return self._list_id
 
     async def async_added_to_hass(self) -> None:
-        """Handle when entity is added to Home Assistant."""
-        self._unsub = async_dispatcher_connect(
-            self.hass,
-            f"{DOMAIN}_update_{self.__id}",
-            self.schedule_update_ha_state,
+        """Subscribe to store changes once added."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, SIGNAL_UPKEEP_CHANGED, self._handle_event
+            )
         )
 
-    async def async_will_remove_from_hass(self) -> None:
-        """Handle when entity is removed from Home Assistant."""
-        self._unsub()
+    @callback
+    def _handle_event(self, event: dict[str, Any]) -> None:
+        event_type = event["type"]
+        if event_type == "data_imported":
+            # An import may have replaced this list's tasks entirely; the
+            # event doesn't carry per-list detail, so just refresh.
+            self._refresh_items()
+            self.async_write_ha_state()
+            return
+        if event_type not in ("task_created", "task_updated", "task_deleted"):
+            return
+        if event.get("list_id") != self._list_id:
+            return
+        self._refresh_items()
+        self.async_write_ha_state()
 
-    @property
-    def name(self) -> str:
-        """Return the name of the todo list."""
-        return self.coordinator.lists.get(self.__id, {}).get("name")
+    @callback
+    def _refresh_items(self) -> None:
+        self.todo_items = [
+            _task_to_todo_item(task) for task in self._store.list_tasks(self._list_id)
+        ]
 
-    @property
-    def available(self) -> bool:
-        """Return if the todo list is available."""
-        return self.__id in self.coordinator.lists
-
-    @property
-    def state(self) -> str:
-        """Return number of active tasks."""
-        tasks = self.coordinator.tasks.get(self.__id, {})
-        return sum([1 for t in tasks.values() if not t.get("completed", False)])
-
-    @property
-    def todo_items(self) -> list[TodoItem]:
-        """Return list of todo items."""
-        items = []
-        tasks = self.coordinator.tasks.get(self.__id, {})
-
-        # Parse tasks and group them
-        due_tasks = []
-        upcoming_tasks = []
-        completed_tasks = []
-
-        today = (
-            datetime.datetime.now(tz=datetime.UTC)
-            .astimezone()
-            .replace(hour=0, minute=0, second=0, microsecond=0)
-        )
-
-        for task in tasks.values():
-            # Parse datetime strings
-            due_date = None
-            completed_at = None
-            created_at = None
-
-            if due_date_str := task.get("due_date"):
-                with contextlib.suppress(ValueError, TypeError):
-                    due_date = datetime.date.fromisoformat(due_date_str)
-
-            if completed_at_str := task.get("completed_at"):
-                with contextlib.suppress(ValueError, TypeError):
-                    completed_at = _parse_datetime(completed_at_str).astimezone()
-
-            if created_at_str := task.get("created_at"):
-                with contextlib.suppress(ValueError, TypeError):
-                    created_at = _parse_datetime(created_at_str).astimezone()
-
-            task_data = (task, due_date, completed_at, created_at)
-            is_completed = task.get("completed", False)
-
-            if is_completed:
-                completed_tasks.append(task_data)
-            elif due_date and due_date <= today.date():
-                due_tasks.append(task_data)
-            else:
-                upcoming_tasks.append(task_data)
-
-        # Sort each group by due_date, completed_at, created_at (descending order)
-        min_dt = datetime.datetime.min.replace(tzinfo=today.tzinfo)
-
-        def _pending_sort_key(
-            x: tuple[
-                dict,
-                datetime.datetime | None,
-                datetime.datetime | None,
-                datetime.datetime | None,
-            ],
-        ) -> tuple[datetime.datetime, datetime.datetime, datetime.datetime]:
-            (_task, due_date, _completed_at, created_at) = x
-            return (due_date or min_dt.date(), created_at or min_dt)
-
-        def _completed_sort_key(
-            x: tuple[
-                dict,
-                datetime.datetime | None,
-                datetime.datetime | None,
-                datetime.datetime | None,
-            ],
-        ) -> tuple[datetime.datetime, datetime.datetime, datetime.datetime]:
-            (_task, _due_date, completed_at, created_at) = x
-            return (
-                completed_at or min_dt,
-                created_at or min_dt,
-            )
-
-        due_tasks.sort(key=_pending_sort_key, reverse=True)
-        upcoming_tasks.sort(key=_pending_sort_key, reverse=True)
-        completed_tasks.sort(key=_completed_sort_key, reverse=True)
-
-        # Concatenate the three groups in order: due, upcoming, completed
-        all_tasks = due_tasks + upcoming_tasks + completed_tasks
-
-        # Create TodoItem objects from sorted tasks
-        for task, due_date, _, _ in all_tasks:
-            status = (
-                TodoItemStatus.COMPLETED
-                if task.get("completed")
-                else TodoItemStatus.NEEDS_ACTION
-            )
-
-            items.append(
-                TodoItem(
-                    summary=task["title"],
-                    description=task.get("description", None),
-                    uid=str(task["id"]),
-                    status=status,
-                    due=due_date,
-                )
-            )
-        return items
+    @callback
+    def async_update_list_name(self, name: str) -> None:
+        """Update this entity's name after the underlying list is renamed."""
+        self._attr_name = name
+        self.async_write_ha_state()
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
-        """Add an item to the To-do list."""
-        await self.__client.async_create_task(
-            list_id=self.__id,
-            title=item.summary,
+        """Create a new task from a todo item."""
+        self._store.create_task(
+            self._list_id,
+            item.summary or "",
+            item.description,
+            completed=item.status == TodoItemStatus.COMPLETED,
             due_date=item.due,
         )
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
-        """Update an item in the To-do list."""
-        await self.__client.async_update_task(
-            task_id=int(item.uid),
+        """
+        Update a task from a todo item.
+
+        Deliberately calls the store directly rather than going through the
+        WS `tasks/update` handler, so completing a recurring task here does
+        *not* create a rescheduled follow-up task — that logic is part of
+        the panel experience, not the (intentionally lossy) todo mapping.
+        """
+        self._store.update_task(
+            int(item.uid),
             title=item.summary,
+            description=item.description,
             completed=item.status == TodoItemStatus.COMPLETED,
             due_date=item.due,
-            description=item.description,
         )
 
     async def async_delete_todo_items(self, uids: list[str]) -> None:
-        """Delete an item in the To-do list."""
+        """Delete tasks by their todo item uid."""
         for uid in uids:
-            await self.__client.async_delete_task(task_id=int(uid))
+            self._store.delete_task(int(uid))
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: HomeUpkeepConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up one HomeUpkeepTodoListEntity per list, kept in sync with the store."""
+    store = async_get_store(hass)
+    entities: dict[int, HomeUpkeepTodoListEntity] = {}
+
+    @callback
+    def _sync_lists() -> None:
+        current = {lst.id: lst.name for lst in store.list_lists()}
+
+        new_entities = [
+            HomeUpkeepTodoListEntity(store, list_id, name)
+            for list_id, name in current.items()
+            if list_id not in entities
+        ]
+        for entity in new_entities:
+            entities[entity.list_id] = entity
+        if new_entities:
+            async_add_entities(new_entities)
+
+        for list_id in list(entities):
+            if list_id not in current:
+                hass.async_create_task(
+                    entities.pop(list_id).async_remove(force_remove=True)
+                )
+
+    @callback
+    def _handle_event(event: dict[str, Any]) -> None:
+        event_type = event["type"]
+        if event_type in ("list_created", "list_deleted", "data_imported"):
+            # Imports can add new lists (and overwrite existing ones), so
+            # resync entities the same way as an explicit list_created.
+            _sync_lists()
+        elif event_type == "list_updated":
+            entity = entities.get(event["list"].id)
+            if entity is not None:
+                entity.async_update_list_name(event["list"].name)
+
+    _sync_lists()
+    entry.async_on_unload(
+        async_dispatcher_connect(hass, SIGNAL_UPKEEP_CHANGED, _handle_event)
+    )

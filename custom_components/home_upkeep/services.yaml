@@ -1,0 +1,7 @@
+import_from_json:
+  fields:
+    path:
+      required: true
+      example: "/config/home_upkeep_import"
+      selector:
+        text:

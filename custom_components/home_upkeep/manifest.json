@@ -1,15 +1,13 @@
 {
   "domain": "home_upkeep",
   "name": "Home Upkeep",
-  "codeowners": [
-    "@tonyroberts"
-  ],
+  "codeowners": ["@tonyroberts"],
   "config_flow": true,
-  "dependencies": [
-    "hassio"
-  ],
+  "dependencies": ["http", "websocket_api", "frontend", "panel_custom", "todo"],
   "documentation": "https://github.com/tonyroberts/home-upkeep-component",
+  "integration_type": "service",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/tonyroberts/home-upkeep-component/issues",
+  "requirements": [],
   "version": "0.0.0"
 }

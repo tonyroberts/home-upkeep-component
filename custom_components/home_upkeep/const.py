@@ -1,14 +1,20 @@
-"""Constants for home-upkeep-component."""
+"""Constants for the Home Upkeep integration."""
 
-from logging import Logger, getLogger
+from __future__ import annotations
 
-LOGGER: Logger = getLogger(__package__)
+from homeassistant.const import Platform
 
 DOMAIN = "home_upkeep"
-ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
 
-# Default host for Upkeep API
-UPKEEP_DEFAULT_HOST = "local-home-upkeep"
+PLATFORMS = [Platform.TODO]
 
-# Default port for Upkeep API
-UPKEEP_DEFAULT_PORT = 8125
+SIGNAL_UPKEEP_CHANGED = "home_upkeep_changed"
+
+STORAGE_KEY = "home_upkeep"
+STORAGE_VERSION = 1
+
+PANEL_URL_PATH = "home-upkeep"
+PANEL_WEBCOMPONENT_NAME = "home-upkeep-panel"
+PANEL_STATIC_PATH = "/home_upkeep_static"
+PANEL_TITLE = "Home Upkeep"
+PANEL_ICON = "mdi:duck"

@@ -13,6 +13,7 @@ ignore = [
     "D212", # multi-line-summary-first-line (incompatible with formatter)
     "COM812", # incompatible with formatter
     "ISC001", # incompatible with formatter
+    "CPY001", # missing copyright header - known, accepted repo-wide gap
 ]
 
 [lint.flake8-pytest-style]
@@ -23,3 +24,9 @@ keep-runtime-typing = true
 
 [lint.mccabe]
 max-complexity = 25
+
+[lint.per-file-ignores]
+"tests/*" = [
+    "S101", # assert is how pytest tests assertions
+    "ARG001", # fixtures like setup_integration are used for their side effect, not their value
+]
