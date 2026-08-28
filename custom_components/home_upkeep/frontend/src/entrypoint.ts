@@ -151,6 +151,26 @@ export class HomeUpkeepPanel extends LitElement {
         align-items: center;
         justify-content: space-between;
       }
+      .header-start {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .hass-menu-button {
+        display: inline-flex;
+        flex-shrink: 0;
+        border: none;
+        background: none;
+        border-radius: 0.25rem;
+        padding: 0.5rem;
+        margin-left: -0.5rem;
+        color: var(--hu-gray-600);
+        cursor: pointer;
+      }
+      .hass-menu-button:hover {
+        background: var(--hu-gray-100);
+        color: var(--hu-gray-900);
+      }
       h1 {
         margin: 0 0 0.5rem;
         font-size: 1.875rem;
@@ -295,10 +315,12 @@ export class HomeUpkeepPanel extends LitElement {
         .subtitle {
           color: var(--hu-gray-400);
         }
-        .burger {
+        .burger,
+        .hass-menu-button {
           color: var(--hu-gray-400);
         }
-        .burger:hover {
+        .burger:hover,
+        .hass-menu-button:hover {
           background: var(--hu-gray-800);
           color: var(--hu-gray-100);
         }
@@ -480,6 +502,22 @@ export class HomeUpkeepPanel extends LitElement {
 
   private _toggleMobileMenu(): void {
     this._mobileMenuOpen = !this._mobileMenuOpen;
+  }
+
+  /**
+   * Ask the Home Assistant frontend shell to open its sidebar/drawer.
+   *
+   * Core panels get this for free from `hass-tabs-subpage`/`ha-menu-button`;
+   * ours is a bare custom element registered via `panel_custom` with
+   * `embed_iframe: false` (see `panel.py`), so nothing renders the standard
+   * menu button automatically. Without it, narrow layouts — most visibly
+   * the iOS/Android companion apps, which are always narrow — have no way
+   * back to the rest of Home Assistant once inside this panel.
+   */
+  private _toggleHassMenu(): void {
+    this.dispatchEvent(
+      new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }),
+    );
   }
 
   private async _createTask(payload: TaskCreate): Promise<void> {
@@ -744,13 +782,37 @@ export class HomeUpkeepPanel extends LitElement {
 
           <main>
             <div class="header">
-              <div>
-                <h1>${selectedList ? selectedList.name : "Home Upkeep"}</h1>
-                ${selectedList
-                  ? null
-                  : html`<p class="subtitle">
-                      Select a list to get started
-                    </p>`}
+              <div class="header-start">
+                ${this.narrow
+                  ? html`<button
+                      class="hass-menu-button"
+                      aria-label="Open menu"
+                      @click=${() => this._toggleHassMenu()}
+                    >
+                      <svg
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M4 6h16M4 12h16M4 18h16"
+                        />
+                      </svg>
+                    </button>`
+                  : null}
+                <div>
+                  <h1>${selectedList ? selectedList.name : "Home Upkeep"}</h1>
+                  ${selectedList
+                    ? null
+                    : html`<p class="subtitle">
+                        Select a list to get started
+                      </p>`}
+                </div>
               </div>
               <button
                 class="burger"
