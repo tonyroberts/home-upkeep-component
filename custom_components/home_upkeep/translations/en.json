@@ -13,11 +13,11 @@
   "services": {
     "import_from_json": {
       "name": "Import from JSON export",
-      "description": "One-time import of lists and tasks from a copy of the add-on's list_<id>.json files.",
+      "description": "One-time import of lists and tasks from a copy of the add-on's 'list_id'.json files.",
       "fields": {
         "path": {
           "name": "Directory path",
-          "description": "Path to a directory containing the add-on's list_<id>.json files."
+          "description": "Path to a directory containing the add-on's 'list_id'.json files."
         }
       }
     }
