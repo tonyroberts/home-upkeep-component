@@ -91,7 +91,7 @@ export class HomeUpkeepTaskItem extends LitElement {
         gap: 0.75rem;
       }
       .checkbox {
-        margin-top: 0.25rem;
+        margin-top: 0;
       }
       .body {
         min-width: 0;
@@ -100,6 +100,7 @@ export class HomeUpkeepTaskItem extends LitElement {
       .title {
         font-size: 0.875rem;
         font-weight: 500;
+        line-height: 1rem;
         color: var(--hu-gray-900);
         margin: 0;
       }
