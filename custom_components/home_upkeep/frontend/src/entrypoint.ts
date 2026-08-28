@@ -105,17 +105,56 @@ export class HomeUpkeepPanel extends LitElement {
         display: block;
         min-height: 100vh;
         background: var(--hu-gray-50);
+        font-family: Roboto, Noto, sans-serif;
       }
       @media (prefers-color-scheme: dark) {
         :host {
           background: black;
         }
       }
+      .app-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        color: rgb(20, 20, 20);
+        height: calc(40px + var(--safe-area-inset-top, 0px));
+        padding: 0px 16px;
+        background: rgb(255, 255, 255);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+        box-sizing: border-box;
+      }
+      .app-toolbar-title {
+        margin-inline-start: 1.5rem;
+        font-size: 16px;
+        font-weight: 400;
+        color: rgb(20, 20, 20);
+        line-height: 1.2;
+        pointer-events: none;
+      }
+      .hass-menu-button {
+        display: inline-flex;
+        flex-shrink: 0;
+        border: none;
+        background: none;
+        border-radius: 0.25rem;
+        padding: 0.75rem;
+        color: var(--hu-gray-600);
+        cursor: pointer;
+      }
+      .hass-menu-button:hover {
+        background: var(--hu-gray-100);
+        color: var(--hu-gray-900);
+      }
       .page {
         max-width: 80rem;
         margin: 0 auto;
         padding: 2rem 1rem;
         box-sizing: border-box;
+      }
+      .page-narrow {
+        padding-block: 0;
       }
       @media (min-width: 640px) {
         .page {
@@ -150,26 +189,6 @@ export class HomeUpkeepPanel extends LitElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
-      }
-      .header-start {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-      }
-      .hass-menu-button {
-        display: inline-flex;
-        flex-shrink: 0;
-        border: none;
-        background: none;
-        border-radius: 0.25rem;
-        padding: 0.5rem;
-        margin-left: -0.5rem;
-        color: var(--hu-gray-600);
-        cursor: pointer;
-      }
-      .hass-menu-button:hover {
-        background: var(--hu-gray-100);
-        color: var(--hu-gray-900);
       }
       h1 {
         margin: 0 0 0.5rem;
@@ -309,6 +328,13 @@ export class HomeUpkeepPanel extends LitElement {
         margin-top: 1.5rem;
       }
       @media (prefers-color-scheme: dark) {
+        .app-toolbar {
+          background: black;
+          border-bottom-color: var(--hu-gray-800);
+        }
+        .app-toolbar-title {
+          color: var(--hu-gray-300);
+        }
         h1 {
           color: var(--hu-gray-100);
         }
@@ -738,7 +764,21 @@ export class HomeUpkeepPanel extends LitElement {
     );
 
     return html`
-      <div class="page">
+      ${this.narrow
+        ? html`<div class="app-toolbar">
+            <button
+              class="hass-menu-button"
+              aria-label="Open menu"
+              @click=${() => this._toggleHassMenu()}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z" />
+              </svg>
+            </button>
+            <span class="app-toolbar-title">Home Upkeep</span>
+          </div>`
+        : null}
+      <div class="page${this.narrow ? " page-narrow" : ""}">
         ${this._migratedFromAddon &&
         this._addonRunning &&
         !this._addonBannerDismissed
@@ -782,37 +822,13 @@ export class HomeUpkeepPanel extends LitElement {
 
           <main>
             <div class="header">
-              <div class="header-start">
-                ${this.narrow
-                  ? html`<button
-                      class="hass-menu-button"
-                      aria-label="Open menu"
-                      @click=${() => this._toggleHassMenu()}
-                    >
-                      <svg
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M4 6h16M4 12h16M4 18h16"
-                        />
-                      </svg>
-                    </button>`
-                  : null}
-                <div>
-                  <h1>${selectedList ? selectedList.name : "Home Upkeep"}</h1>
-                  ${selectedList
-                    ? null
-                    : html`<p class="subtitle">
-                        Select a list to get started
-                      </p>`}
-                </div>
+              <div>
+                <h1>${selectedList ? selectedList.name : "Home Upkeep"}</h1>
+                ${selectedList
+                  ? null
+                  : html`<p class="subtitle">
+                      Select a list to get started
+                    </p>`}
               </div>
               <button
                 class="burger"
