@@ -66,9 +66,7 @@ export const designTokens = css`
     --hu-blue-800: #1e40af;
     --hu-blue-900: #1e3a8a;
 
-    font-family:
-      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
-      sans-serif;
+    font-family: Roboto, Noto, sans-serif;
   }
 `;
 

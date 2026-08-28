@@ -105,7 +105,6 @@ export class HomeUpkeepPanel extends LitElement {
         display: block;
         min-height: 100vh;
         background: var(--hu-gray-50);
-        font-family: Roboto, Noto, sans-serif;
       }
       @media (prefers-color-scheme: dark) {
         :host {
