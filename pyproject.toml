@@ -1,0 +1,21 @@
+[project]
+name = "home-upkeep-component"
+version = "0.0.0"
+description = "Home Assistant custom integration + panel for Home Upkeep"
+requires-python = ">=3.13.2"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest-homeassistant-custom-component>=0.13.316",
+    # HA's runtime auto-installs manifest-declared component requirements
+    # (like frontend's) on first load; the test harness doesn't, so it must
+    # be pinned explicitly to match whatever `frontend`'s manifest.json
+    # requires for the homeassistant version pytest-homeassistant-custom-component pulls in.
+    "home-assistant-frontend==20260128.6",
+    "ruff>=0.14.1",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

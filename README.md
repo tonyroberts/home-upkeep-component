@@ -44,17 +44,9 @@ You can snooze tasks if conditions aren't right, ensuring you see them again whe
 
 ### Installation
 
-Home Upkeep runs as a Home Assistant add-on and can be installed through the Supervisor add-on store.
-
-To make your task lists available as Home Assistant todo entities, you'll also need to install the Home Upkeep custom integration.
-
-#### Install the addon
-
-1. Add the repository [https://github.com/tonyroberts/home-upkeep-addon](https://github.com/tonyroberts/home-upkeep-addon) to your addon repositories
-2. Install and start the Home Upkeep add-on, optionally selecting the 'Add to sidebar' option
-
-
-#### Install the integration
+Home Upkeep now runs entirely as this Home Assistant custom integration — no
+add-on, no separate container. It ships its own sidebar panel (a Home
+Assistant custom panel) and needs nothing else installed.
 
 The integration can be installed via HACS:
 
@@ -64,4 +56,18 @@ Or to install manually:
    - Add the repository [https://github.com/tonyroberts/home-upkeep-component](https://github.com/tonyroberts/home-upkeep-component) to your HACS custom repositories, using type 'integration'
    - Install the Home Upkeep custom integration
    - Add the integration under Settings -> Devices & services
+
+#### Upgrading from a version that used the add-on
+
+Earlier versions of this integration only exposed your add-on's task lists as
+`todo` entities and required the separate Home Upkeep **add-on** to be
+installed and running. If you're upgrading from one of those versions,
+updating this integration via HACS is all you need to do: on its next
+restart, it automatically pulls your existing lists and tasks from the add-on
+into its own storage, once, and the new panel appears in the sidebar with
+that data already in it.
+
+Once the migration has run, a red banner appears in the panel letting you
+know your data has moved over and it's safe to uninstall the Home Upkeep
+add-on.
 

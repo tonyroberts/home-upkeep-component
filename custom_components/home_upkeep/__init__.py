@@ -1,90 +1,47 @@
-"""
-Custom integration for Home Upkeep todo lists.
-
-For more details about this integration, please refer to
-https://github.com/tonyroberts/home-upkeep-component
-"""
+"""The Home Upkeep integration."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from homeassistant.const import CONF_HOST, CONF_PORT, EVENT_HOMEASSISTANT_STOP, Platform
-from homeassistant.core import callback
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.loader import async_get_loaded_integration
+from homeassistant.components.frontend import async_remove_panel
+from homeassistant.config_entries import ConfigEntry
 
-from .api import UpkeepApiClient
-from .const import DOMAIN, LOGGER
-from .coordinator import UpkeepCoordinator
-from .data import UpkeepData
+from . import migration, panel, websocket_api
+from .const import PANEL_URL_PATH, PLATFORMS
+from .store import HomeUpkeepStore
 
+# ruff (TC002) wants type-only imports under TYPE_CHECKING to avoid an
+# unnecessary runtime import, since `from __future__ import annotations`
+# means annotations are never evaluated at runtime anyway.
 if TYPE_CHECKING:
-    from homeassistant.core import Event, HomeAssistant
+    from homeassistant.core import HomeAssistant
 
-    from .data import UpkeepConfigEntry
-
-PLATFORMS: list[Platform] = [
-    Platform.TODO,
-]
+type HomeUpkeepConfigEntry = ConfigEntry[HomeUpkeepStore]
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: UpkeepConfigEntry,
+    hass: HomeAssistant, entry: HomeUpkeepConfigEntry
 ) -> bool:
-    """Set up this integration using UI."""
-    client = UpkeepApiClient(
-        host=entry.data[CONF_HOST],
-        port=int(entry.data[CONF_PORT]),
-        session=async_get_clientsession(hass),
-    )
+    """Set up Home Upkeep from a config entry."""
+    store = HomeUpkeepStore(hass)
+    await store.async_load()
+    entry.runtime_data = store
 
-    coordinator = UpkeepCoordinator(
-        hass=hass,
-        logger=LOGGER,
-        name=DOMAIN,
-        client=client,
-    )
+    await migration.async_migrate_legacy_addon(hass, entry, store)
 
-    # Check we can connect to the WebSocket API
-    await coordinator.async_connect_websocket()
-
-    # And disconnect when shutting down
-    @callback
-    async def handle_stop(_ev: Event) -> None:
-        await coordinator.async_disconnect_websocket()
-
-    stop_unsub = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, handle_stop)
-
-    entry.runtime_data = UpkeepData(
-        client=client,
-        integration=async_get_loaded_integration(hass, entry.domain),
-        coordinator=coordinator,
-        stop_unsub=stop_unsub,
-    )
-
-    await coordinator.async_config_entry_first_refresh()
-
+    websocket_api.async_register(hass)
+    migration.async_register_services(hass)
+    await panel.async_register(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-
     return True
 
 
 async def async_unload_entry(
-    hass: HomeAssistant,
-    entry: UpkeepConfigEntry,
+    hass: HomeAssistant, entry: HomeUpkeepConfigEntry
 ) -> bool:
-    """Handle removal of an entry."""
-    entry.runtime_data.stop_unsub()
-    await entry.runtime_data.coordinator.async_disconnect_websocket()
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-
-async def async_reload_entry(
-    hass: HomeAssistant,
-    entry: UpkeepConfigEntry,
-) -> None:
-    """Reload config entry."""
-    await hass.config_entries.async_reload(entry.entry_id)
+    """Unload a Home Upkeep config entry."""
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    migration.async_unregister_services(hass)
+    async_remove_panel(hass, PANEL_URL_PATH)
+    return unloaded

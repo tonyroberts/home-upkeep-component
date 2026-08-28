@@ -11,15 +11,34 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: custom_components/home_upkeep/frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: custom_components/home_upkeep/frontend
+        run: |
+          npm ci
+          npm run build
+
       - name: Get version
         id: version
         uses: home-assistant/actions/helpers/version@master
 
       - name: Patch manifest and zip
         run: |
-          sed -i 's/0.0.0/${{ steps.version.outputs.version }}/' custom_components/home_upkeep/manifest.json
+          sed -i -E 's/"version": "[^"]*"/"version": "${{ steps.version.outputs.version }}"/' custom_components/home_upkeep/manifest.json
           cd custom_components/home_upkeep/
-          zip ../../home_upkeep.zip -r ./
+          zip ../../home_upkeep.zip -r ./ \
+            -x 'frontend/node_modules/*' \
+            -x 'frontend/src/*' \
+            -x 'frontend/package.json' \
+            -x 'frontend/package-lock.json' \
+            -x 'frontend/tsconfig.json' \
+            -x 'frontend/vite.config.ts'
 
       - name: Upload Release
         uses: softprops/action-gh-release@v2
