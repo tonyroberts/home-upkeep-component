@@ -18,6 +18,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
+from aiohasupervisor import SupervisorError
+from aiohasupervisor.models import AddonState
+from homeassistant.components.hassio.handler import get_supervisor_client
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -41,6 +44,12 @@ _LOGGER = logging.getLogger(__name__)
 SERVICE_IMPORT_FROM_JSON = "import_from_json"
 
 _IMPORT_FROM_JSON_SCHEMA = vol.Schema({vol.Required("path"): str})
+
+# The add-on's own slug (from its config.yaml) is "home-upkeep"; Supervisor
+# prefixes it with the installing repository's slug, so match on the suffix
+# rather than the exact slug (see git history commit 18752e6, which first
+# discovered the add-on this way for host/port lookup).
+_ADDON_SLUG_SUFFIX = "_home-upkeep"
 
 
 def _parse_docs(
@@ -229,6 +238,40 @@ async def async_migrate_legacy_addon(
         k: v for k, v in entry.data.items() if k not in (CONF_HOST, CONF_PORT)
     }
     hass.config_entries.async_update_entry(entry, data=new_data)
+
+
+async def async_is_addon_running(hass: HomeAssistant) -> bool:
+    """
+    Return whether the retired Home Upkeep add-on is currently running.
+
+    Backs the panel's "add-on detected, you can uninstall it now" banner so
+    it clears itself once the add-on is actually gone, instead of relying on
+    the store's `migrated_from_addon` flag, which is a one-time historical
+    marker set at migration time and never reflects the add-on's current
+    state (see `HomeUpkeepStore.async_mark_migrated_from_addon`).
+
+    Calls the Supervisor client directly rather than going through hassio's
+    own cached add-on list (`get_addons_list`): that cache is only refreshed
+    every 15 minutes (`HASSIO_ADDON_UPDATE_INTERVAL`), with no event-based
+    trigger on install/uninstall/start/stop, so it can be stale exactly when
+    this check matters most — right after the user (un)installs the add-on.
+    `"hassio" not in hass.config.components` is the only guard needed:
+    on any install type without a Supervisor there's nothing further to ask.
+    """
+    if "hassio" not in hass.config.components:
+        return False
+
+    try:
+        supervisor = get_supervisor_client(hass)
+        addons = await supervisor.addons.list()
+    except SupervisorError:
+        _LOGGER.debug(
+            "Could not reach Supervisor to check add-on status", exc_info=True
+        )
+        return False
+
+    addon = next((a for a in addons if a.slug.endswith(_ADDON_SLUG_SUFFIX)), None)
+    return addon is not None and addon.state == AddonState.STARTED
 
 
 def async_register_services(hass: HomeAssistant) -> None:

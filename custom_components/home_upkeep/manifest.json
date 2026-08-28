@@ -1,6 +1,7 @@
 {
   "domain": "home_upkeep",
   "name": "Home Upkeep",
+  "after_dependencies": ["hassio"],
   "codeowners": ["@tonyroberts"],
   "config_flow": true,
   "dependencies": ["http", "websocket_api", "frontend", "panel_custom", "todo"],

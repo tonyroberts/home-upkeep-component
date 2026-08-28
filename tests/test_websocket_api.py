@@ -674,11 +674,12 @@ async def test_migration_status_reflects_store_flag(
 
     await client.send_json_auto_id({"type": "home_upkeep/migration_status"})
     resp = await client.receive_json()
-    assert resp["result"] == {"migrated_from_addon": False}
+    # No Supervisor in the test environment, so addon_running is always False.
+    assert resp["result"] == {"migrated_from_addon": False, "addon_running": False}
 
     store = async_get_store(hass)
     await store.async_mark_migrated_from_addon()
 
     await client.send_json_auto_id({"type": "home_upkeep/migration_status"})
     resp = await client.receive_json()
-    assert resp["result"] == {"migrated_from_addon": True}
+    assert resp["result"] == {"migrated_from_addon": True, "addon_running": False}

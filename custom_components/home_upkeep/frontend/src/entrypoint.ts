@@ -74,6 +74,8 @@ export class HomeUpkeepPanel extends LitElement {
 
   @state() private _migratedFromAddon = false;
 
+  @state() private _addonRunning = false;
+
   @state() private _addonBannerDismissed = false;
 
   @state() private _mobileMenuOpen = false;
@@ -378,6 +380,7 @@ export class HomeUpkeepPanel extends LitElement {
     try {
       const status = await this._api!.getMigrationStatus();
       this._migratedFromAddon = status.migrated_from_addon;
+      this._addonRunning = status.addon_running;
     } catch (err) {
       console.error(err);
     }
@@ -698,7 +701,9 @@ export class HomeUpkeepPanel extends LitElement {
 
     return html`
       <div class="page">
-        ${this._migratedFromAddon && !this._addonBannerDismissed
+        ${this._migratedFromAddon &&
+        this._addonRunning &&
+        !this._addonBannerDismissed
           ? html`<div class="addon-banner">
               <div class="addon-banner-text">
                 Home Upkeep add-on detected — its data has been migrated to

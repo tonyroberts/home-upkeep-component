@@ -186,7 +186,10 @@ export class HomeUpkeepApi {
     });
   }
 
-  getMigrationStatus(): Promise<{ migrated_from_addon: boolean }> {
+  getMigrationStatus(): Promise<{
+    migrated_from_addon: boolean;
+    addon_running: boolean;
+  }> {
     return this.hass.connection.sendMessagePromise({
       type: "home_upkeep/migration_status",
     });

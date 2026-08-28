@@ -19,7 +19,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import SIGNAL_UPKEEP_CHANGED
 from .logic import calculate_next_due_date
-from .migration import async_import_from_docs
+from .migration import async_import_from_docs, async_is_addon_running
 from .store import _UNSET, ImportConflictError, async_get_store
 
 # ruff (TC002) wants type-only imports under TYPE_CHECKING to avoid an
@@ -407,14 +407,18 @@ async def handle_import_json(
 @websocket_api.websocket_command(
     {vol.Required("type"): "home_upkeep/migration_status"}
 )
-@callback
-def handle_migration_status(
+@websocket_api.async_response
+async def handle_migration_status(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Report whether an automatic add-on migration has completed."""
+    """Report add-on migration/uninstall status for the panel's banner."""
     store = async_get_store(hass)
     connection.send_result(
-        msg["id"], {"migrated_from_addon": store.migrated_from_addon}
+        msg["id"],
+        {
+            "migrated_from_addon": store.migrated_from_addon,
+            "addon_running": await async_is_addon_running(hass),
+        },
     )
 
 
